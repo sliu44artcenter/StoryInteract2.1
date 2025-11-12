@@ -1,0 +1,1387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Scholar's Choice - Interactive 3D Story</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      overflow: hidden;
+      font-family: 'Arial', sans-serif;
+      background: #000;
+      touch-action: none;
+    }
+
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+      position: fixed;
+      top: 0;
+      left: 0;
+    }
+
+    #restart-btn {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+      z-index: 100;
+    }
+
+    #restart-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.1) rotate(180deg);
+    }
+
+    #restart-btn svg {
+      width: 30px;
+      height: 30px;
+      fill: white;
+    }
+
+    .loading {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-size: 24px;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <div class="loading" id="loading">Loading Experience...</div>
+  <div id="canvas-container"></div>
+
+  <!-- Restart Button -->
+  <button id="restart-btn" aria-label="Restart Story">
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+    </svg>
+  </button>
+
+  <!-- Three.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- GSAP for animations from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+  <script>
+    // ============================================
+    // MAIN APPLICATION
+    // ============================================
+
+    let scene, camera, renderer, raycaster, mouse;
+    let choiceObjects = [];
+    let selectedChoice = null;
+    let isAnimating = false;
+
+    // References to scene objects
+    let snowParticles, ground, sky, scholar;
+    let stoneHousesGroup, woodHousesGroup, strawHutsGroup;
+    let choicesGroup;
+    let ambientLight, directionalLight, directionalLight2;
+    let cameraOrbitAnimation;
+
+    // ============================================
+    // INITIALIZATION
+    // ============================================
+
+    function init() {
+      // Scene setup
+      scene = new THREE.Scene();
+      scene.fog = new THREE.Fog(0xb8d4e8, 10, 50);
+
+      // Camera setup
+      camera = new THREE.PerspectiveCamera(
+        60,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      camera.position.set(0, 8, 15);
+      camera.lookAt(0, 2, 0);
+
+      // Renderer setup
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.setClearColor(0x000000);
+      document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+      // Raycaster for mouse interaction
+      raycaster = new THREE.Raycaster();
+      mouse = new THREE.Vector2();
+
+      // Build scene
+      createLighting();
+      createSky();
+      createGround();
+      createSnow();
+      createScholar();
+      createChoices();
+      createHouses();
+
+      // Event listeners
+      window.addEventListener('resize', onWindowResize);
+      renderer.domElement.addEventListener('click', onMouseClick);
+      renderer.domElement.addEventListener('touchend', onTouchEnd);
+      renderer.domElement.addEventListener('mousemove', onMouseMove);
+
+      // Restart button
+      document.getElementById('restart-btn').addEventListener('click', restartExperience);
+
+      // Hide loading
+      document.getElementById('loading').style.display = 'none';
+
+      // Start camera orbit
+      startCameraOrbit();
+
+      // Start animation loop
+      animate();
+    }
+
+    // ============================================
+    // SCENE CREATION
+    // ============================================
+
+    function createLighting() {
+      // Ambient light
+      ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+      scene.add(ambientLight);
+
+      // Main directional light (sun)
+      directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(10, 20, 10);
+      directionalLight.castShadow = true;
+      directionalLight.shadow.mapSize.width = 2048;
+      directionalLight.shadow.mapSize.height = 2048;
+      directionalLight.shadow.camera.far = 50;
+      directionalLight.shadow.camera.left = -20;
+      directionalLight.shadow.camera.right = 20;
+      directionalLight.shadow.camera.top = 20;
+      directionalLight.shadow.camera.bottom = -20;
+      scene.add(directionalLight);
+
+      // Fill light
+      directionalLight2 = new THREE.DirectionalLight(0xb3d9ff, 0.3);
+      directionalLight2.position.set(-5, 10, -5);
+      scene.add(directionalLight2);
+
+      // Rim light
+      const rimLight = new THREE.PointLight(0xe6f2ff, 0.5, 100);
+      rimLight.position.set(0, 5, 8);
+      scene.add(rimLight);
+    }
+
+    function createSky() {
+      const skyGeometry = new THREE.SphereGeometry(50, 32, 32);
+      const skyMaterial = new THREE.MeshBasicMaterial({
+        color: 0xb8d4e8,
+        side: THREE.BackSide
+      });
+      sky = new THREE.Mesh(skyGeometry, skyMaterial);
+      scene.add(sky);
+    }
+
+    function createGround() {
+      const groundGeometry = new THREE.PlaneGeometry(100, 100);
+      const groundMaterial = new THREE.MeshStandardMaterial({
+        color: 0xe8f0f7,
+        roughness: 0.9,
+        metalness: 0.1
+      });
+      ground = new THREE.Mesh(groundGeometry, groundMaterial);
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
+    }
+
+    function createSnow() {
+      const particleCount = 2000;
+      const positions = new Float32Array(particleCount * 3);
+      const velocities = [];
+
+      for (let i = 0; i < particleCount; i++) {
+        positions[i * 3] = (Math.random() - 0.5) * 50;
+        positions[i * 3 + 1] = Math.random() * 30;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 50;
+
+        velocities.push({
+          y: -Math.random() * 0.05 - 0.02,
+          x: (Math.random() - 0.5) * 0.02
+        });
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+      const material = new THREE.PointsMaterial({
+        size: 0.15,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.8,
+        sizeAttenuation: true
+      });
+
+      snowParticles = new THREE.Points(geometry, material);
+      snowParticles.userData.velocities = velocities;
+      snowParticles.userData.intensity = 1.0;
+      scene.add(snowParticles);
+    }
+
+    function createScholar() {
+      scholar = new THREE.Group();
+
+      // Body
+      const bodyGeometry = new THREE.CylinderGeometry(0.4, 0.5, 1.5, 8);
+      const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x2c3e50 });
+      const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+      body.position.y = 1.5;
+      body.castShadow = true;
+      scholar.add(body);
+
+      // Head
+      const headGeometry = new THREE.SphereGeometry(0.35, 16, 16);
+      const headMaterial = new THREE.MeshStandardMaterial({ color: 0xf5d5b8 });
+      const head = new THREE.Mesh(headGeometry, headMaterial);
+      head.position.y = 2.5;
+      head.castShadow = true;
+      scholar.add(head);
+
+      // Hat
+      const hatGeometry = new THREE.CylinderGeometry(0.5, 0.3, 0.3, 8);
+      const hatMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+      const hat = new THREE.Mesh(hatGeometry, hatMaterial);
+      hat.position.y = 3;
+      hat.castShadow = true;
+      scholar.add(hat);
+
+      // Hat top
+      const hatTopGeometry = new THREE.BoxGeometry(0.8, 0.05, 0.8);
+      const hatTop = new THREE.Mesh(hatTopGeometry, hatMaterial);
+      hatTop.position.y = 3.3;
+      hatTop.castShadow = true;
+      scholar.add(hatTop);
+
+      // Arms
+      const armGeometry = new THREE.CylinderGeometry(0.15, 0.12, 1, 8);
+      const leftArm = new THREE.Mesh(armGeometry, bodyMaterial);
+      leftArm.position.set(-0.6, 1.3, 0);
+      leftArm.rotation.z = 0.3;
+      leftArm.castShadow = true;
+      scholar.add(leftArm);
+
+      const rightArm = new THREE.Mesh(armGeometry, bodyMaterial);
+      rightArm.position.set(0.6, 1.3, 0);
+      rightArm.rotation.z = -0.3;
+      rightArm.castShadow = true;
+      scholar.add(rightArm);
+
+      // Legs
+      const legGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.8, 8);
+      const legMaterial = new THREE.MeshStandardMaterial({ color: 0x34495e });
+      const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+      leftLeg.position.set(-0.2, 0.4, 0);
+      leftLeg.castShadow = true;
+      scholar.add(leftLeg);
+
+      const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+      rightLeg.position.set(0.2, 0.4, 0);
+      rightLeg.castShadow = true;
+      scholar.add(rightLeg);
+
+      scene.add(scholar);
+    }
+
+    function createChoices() {
+      choicesGroup = new THREE.Group();
+      const radius = 3.5;
+      const height = 3;
+
+      // Stone choice
+      const stoneChoice = createStoneIcon();
+      stoneChoice.position.set(Math.cos(0) * radius, height, Math.sin(0) * radius);
+      stoneChoice.userData.type = 'stone';
+      choicesGroup.add(stoneChoice);
+      choiceObjects.push(stoneChoice);
+
+      // Wood choice
+      const woodChoice = createWoodIcon();
+      woodChoice.position.set(
+        Math.cos((Math.PI * 2) / 3) * radius,
+        height,
+        Math.sin((Math.PI * 2) / 3) * radius
+      );
+      woodChoice.userData.type = 'wood';
+      choicesGroup.add(woodChoice);
+      choiceObjects.push(woodChoice);
+
+      // Straw choice
+      const strawChoice = createStrawIcon();
+      strawChoice.position.set(
+        Math.cos((Math.PI * 4) / 3) * radius,
+        height,
+        Math.sin((Math.PI * 4) / 3) * radius
+      );
+      strawChoice.userData.type = 'straw';
+      choicesGroup.add(strawChoice);
+      choiceObjects.push(strawChoice);
+
+      scene.add(choicesGroup);
+
+      // Animate choices appearing
+      choiceObjects.forEach((choice, i) => {
+        choice.scale.set(0, 0, 0);
+        gsap.to(choice.scale, {
+          x: 1, y: 1, z: 1,
+          duration: 1,
+          delay: 0.5 + i * 0.2,
+          ease: 'elastic.out(1, 0.5)'
+        });
+      });
+    }
+
+    function createStoneIcon() {
+      const group = new THREE.Group();
+
+      // Stone block
+      const geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x95a5a6,
+        roughness: 0.7,
+        metalness: 0.3,
+        emissive: 0x95a5a6,
+        emissiveIntensity: 0.3
+      });
+      const stone = new THREE.Mesh(geometry, material);
+      stone.castShadow = true;
+      group.add(stone);
+
+      // Detail
+      const detailGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.02);
+      const detailMaterial = new THREE.MeshStandardMaterial({
+        color: 0x7f8c8d,
+        roughness: 0.9
+      });
+      const detail = new THREE.Mesh(detailGeometry, detailMaterial);
+      detail.position.set(0.1, 0.1, 0.41);
+      group.add(detail);
+
+      // Glow light
+      const light = new THREE.PointLight(0x95a5a6, 2, 4);
+      group.add(light);
+      group.userData.light = light;
+
+      // Glow sphere
+      const glowGeometry = new THREE.SphereGeometry(0.6, 16, 16);
+      const glowMaterial = new THREE.MeshBasicMaterial({
+        color: 0x95a5a6,
+        transparent: true,
+        opacity: 0.15
+      });
+      const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+      glow.scale.set(1.3, 1.3, 1.3);
+      group.add(glow);
+
+      group.userData.initialY = 0;
+      group.userData.time = 0;
+
+      return group;
+    }
+
+    function createWoodIcon() {
+      const group = new THREE.Group();
+
+      // Wood log
+      const geometry = new THREE.CylinderGeometry(0.25, 0.25, 1.2, 16);
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x8b4513,
+        roughness: 0.8,
+        emissive: 0x8b4513,
+        emissiveIntensity: 0.3
+      });
+      const log = new THREE.Mesh(geometry, material);
+      log.rotation.z = Math.PI / 2;
+      log.castShadow = true;
+      group.add(log);
+
+      // Wood rings
+      const ringGeometry = new THREE.RingGeometry(0.15, 0.25, 16);
+      const ringMaterial = new THREE.MeshStandardMaterial({ color: 0x654321 });
+
+      const ring1 = new THREE.Mesh(ringGeometry, ringMaterial);
+      ring1.position.set(0.61, 0, 0);
+      ring1.rotation.y = Math.PI / 2;
+      group.add(ring1);
+
+      const ring2 = new THREE.Mesh(ringGeometry, ringMaterial);
+      ring2.position.set(-0.61, 0, 0);
+      ring2.rotation.y = -Math.PI / 2;
+      group.add(ring2);
+
+      // Glow light
+      const light = new THREE.PointLight(0xd2691e, 2, 4);
+      group.add(light);
+      group.userData.light = light;
+
+      // Glow sphere
+      const glowGeometry = new THREE.SphereGeometry(0.6, 16, 16);
+      const glowMaterial = new THREE.MeshBasicMaterial({
+        color: 0xd2691e,
+        transparent: true,
+        opacity: 0.15
+      });
+      const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+      glow.scale.set(1.3, 1.3, 1.3);
+      group.add(glow);
+
+      group.userData.initialY = 0;
+      group.userData.time = 2;
+
+      return group;
+    }
+
+    function createStrawIcon() {
+      const group = new THREE.Group();
+
+      // Straw bundle
+      const strawGeometry = new THREE.CylinderGeometry(0.08, 0.08, 1, 6);
+      const strawMaterial = new THREE.MeshStandardMaterial({
+        color: 0xdaa520,
+        roughness: 1,
+        emissive: 0xdaa520,
+        emissiveIntensity: 0.3
+      });
+
+      // Create multiple straws in a bundle
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const radius = 0.25;
+        const straw = new THREE.Mesh(strawGeometry, strawMaterial);
+        straw.position.set(
+          Math.cos(angle) * radius,
+          0,
+          Math.sin(angle) * radius
+        );
+        straw.castShadow = true;
+        group.add(straw);
+      }
+
+      // Center straw
+      const centerStraw = new THREE.Mesh(strawGeometry, strawMaterial);
+      centerStraw.castShadow = true;
+      group.add(centerStraw);
+
+      // Glow light
+      const light = new THREE.PointLight(0xf4a460, 2, 4);
+      group.add(light);
+      group.userData.light = light;
+
+      // Glow sphere
+      const glowGeometry = new THREE.SphereGeometry(0.6, 16, 16);
+      const glowMaterial = new THREE.MeshBasicMaterial({
+        color: 0xf4a460,
+        transparent: true,
+        opacity: 0.15
+      });
+      const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+      glow.scale.set(1.3, 1.3, 1.3);
+      group.add(glow);
+
+      group.userData.initialY = 0;
+      group.userData.time = 4;
+
+      return group;
+    }
+
+    function createHouses() {
+      // Stone houses
+      stoneHousesGroup = new THREE.Group();
+      stoneHousesGroup.scale.set(0, 0, 0);
+      const stonePositions = [
+        [-4, 0, -3],
+        [4, 0, -2],
+        [-3, 0, 3],
+        [3, 0, 4],
+        [0, 0, -5]
+      ];
+      stonePositions.forEach(pos => {
+        const house = createStoneHouse();
+        house.position.set(...pos);
+        stoneHousesGroup.add(house);
+      });
+      scene.add(stoneHousesGroup);
+
+      // Wood houses
+      woodHousesGroup = new THREE.Group();
+      woodHousesGroup.scale.set(0, 0, 0);
+      const woodPositions = [
+        [-4, 0, -3],
+        [4, 0, -2],
+        [-3, 0, 3],
+        [3, 0, 4],
+        [0, 0, -5]
+      ];
+      woodPositions.forEach(pos => {
+        const house = createWoodHouse();
+        house.position.set(...pos);
+        woodHousesGroup.add(house);
+      });
+
+      // Add fire light to wood houses (initially off)
+      const fireLight = new THREE.PointLight(0xff6600, 0, 10);
+      fireLight.position.set(0, 2, 0);
+      woodHousesGroup.add(fireLight);
+      woodHousesGroup.userData.fireLight = fireLight;
+
+      scene.add(woodHousesGroup);
+
+      // Straw huts
+      strawHutsGroup = new THREE.Group();
+      strawHutsGroup.scale.set(0, 0, 0);
+      const strawPositions = [
+        [-4, 0, -3],
+        [4, 0, -2],
+        [-3, 0, 3],
+        [3, 0, 4],
+        [0, 0, -5]
+      ];
+      strawPositions.forEach(pos => {
+        const hut = createStrawHut();
+        hut.position.set(...pos);
+        strawHutsGroup.add(hut);
+      });
+      scene.add(strawHutsGroup);
+    }
+
+    function createStoneHouse() {
+      const house = new THREE.Group();
+
+      // Body
+      const bodyGeometry = new THREE.BoxGeometry(1.5, 2, 1.5);
+      const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x7f8c8d,
+        roughness: 0.9
+      });
+      const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+      body.position.y = 1;
+      body.castShadow = true;
+      house.add(body);
+      house.userData.body = body;
+
+      // Roof
+      const roofGeometry = new THREE.ConeGeometry(1.2, 1.2, 4);
+      const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x555555 });
+      const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+      roof.position.y = 2.5;
+      roof.castShadow = true;
+      house.add(roof);
+      house.userData.roof = roof;
+
+      // Window
+      const windowGeometry = new THREE.BoxGeometry(0.4, 0.4, 0.02);
+      const windowMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffcc66,
+        emissive: 0xffcc66,
+        emissiveIntensity: 0
+      });
+      const window = new THREE.Mesh(windowGeometry, windowMaterial);
+      window.position.set(0, 1.2, 0.76);
+      house.add(window);
+      house.userData.window = window;
+
+      // Window light
+      const windowLight = new THREE.PointLight(0xffcc66, 0, 3);
+      windowLight.position.set(0, 1.2, 1);
+      house.add(windowLight);
+      house.userData.windowLight = windowLight;
+
+      return house;
+    }
+
+    function createWoodHouse() {
+      const house = new THREE.Group();
+
+      // Body
+      const bodyGeometry = new THREE.BoxGeometry(1.5, 2, 1.5);
+      const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x8b4513,
+        roughness: 0.8
+      });
+      const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+      body.position.y = 1;
+      body.castShadow = true;
+      house.add(body);
+      house.userData.body = body;
+
+      // Roof
+      const roofGeometry = new THREE.ConeGeometry(1.2, 1.2, 4);
+      const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x654321 });
+      const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+      roof.position.y = 2.5;
+      roof.castShadow = true;
+      house.add(roof);
+      house.userData.roof = roof;
+
+      // Window
+      const windowGeometry = new THREE.BoxGeometry(0.4, 0.4, 0.02);
+      const windowMaterial = new THREE.MeshStandardMaterial({ color: 0x2c1810 });
+      const window = new THREE.Mesh(windowGeometry, windowMaterial);
+      window.position.set(0, 1.2, 0.76);
+      house.add(window);
+
+      return house;
+    }
+
+    function createStrawHut() {
+      const hut = new THREE.Group();
+
+      // Body
+      const bodyGeometry = new THREE.CylinderGeometry(0.9, 1, 1.6, 8);
+      const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0xdaa520,
+        roughness: 1
+      });
+      const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+      body.position.y = 0.8;
+      body.castShadow = true;
+      hut.add(body);
+      hut.userData.body = body;
+
+      // Roof
+      const roofGeometry = new THREE.ConeGeometry(1.1, 1.5, 8);
+      const roofMaterial = new THREE.MeshStandardMaterial({
+        color: 0xcd853f,
+        roughness: 1
+      });
+      const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+      roof.position.y = 2;
+      roof.castShadow = true;
+      hut.add(roof);
+      hut.userData.roof = roof;
+
+      // Door
+      const doorGeometry = new THREE.BoxGeometry(0.3, 0.6, 0.02);
+      const doorMaterial = new THREE.MeshStandardMaterial({ color: 0x8b7355 });
+      const door = new THREE.Mesh(doorGeometry, doorMaterial);
+      door.position.set(0, 0.5, 0.91);
+      hut.add(door);
+
+      return hut;
+    }
+
+    // ============================================
+    // INTERACTION HANDLERS
+    // ============================================
+
+    function onMouseMove(event) {
+      if (isAnimating || !choicesGroup.visible) return;
+
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(choiceObjects, true);
+
+      // Reset cursor
+      document.body.style.cursor = 'default';
+
+      // Reset all choices to normal scale
+      choiceObjects.forEach(choice => {
+        if (choice.userData.hovering) {
+          gsap.to(choice.scale, {
+            x: 1, y: 1, z: 1,
+            duration: 0.3,
+            ease: 'power2.out'
+          });
+          choice.userData.hovering = false;
+        }
+      });
+
+      // Highlight hovered choice
+      if (intersects.length > 0) {
+        let object = intersects[0].object;
+        while (object.parent && !choiceObjects.includes(object)) {
+          object = object.parent;
+        }
+
+        if (choiceObjects.includes(object) && !object.userData.hovering) {
+          document.body.style.cursor = 'pointer';
+          gsap.to(object.scale, {
+            x: 1.2, y: 1.2, z: 1.2,
+            duration: 0.3,
+            ease: 'back.out(1.7)'
+          });
+          object.userData.hovering = true;
+        }
+      }
+    }
+
+    function onMouseClick(event) {
+      if (isAnimating || !choicesGroup.visible) return;
+
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(choiceObjects, true);
+
+      if (intersects.length > 0) {
+        let object = intersects[0].object;
+        while (object.parent && !choiceObjects.includes(object)) {
+          object = object.parent;
+        }
+
+        if (choiceObjects.includes(object)) {
+          handleChoiceSelected(object.userData.type);
+        }
+      }
+    }
+
+    function onTouchEnd(event) {
+      if (isAnimating || !choicesGroup.visible) return;
+
+      event.preventDefault();
+      const touch = event.changedTouches[0];
+
+      mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(choiceObjects, true);
+
+      if (intersects.length > 0) {
+        let object = intersects[0].object;
+        while (object.parent && !choiceObjects.includes(object)) {
+          object = object.parent;
+        }
+
+        if (choiceObjects.includes(object)) {
+          handleChoiceSelected(object.userData.type);
+        }
+      }
+    }
+
+    function handleChoiceSelected(type) {
+      if (isAnimating) return;
+
+      selectedChoice = type;
+      isAnimating = true;
+
+      // Stop camera orbit
+      if (cameraOrbitAnimation) {
+        cameraOrbitAnimation.pause();
+      }
+
+      // Fade out choices
+      fadeOutChoices(() => {
+        // Trigger ending animation
+        setTimeout(() => {
+          triggerEnding(type);
+        }, 500);
+      });
+    }
+
+    function fadeOutChoices(callback) {
+      const tl = gsap.timeline({ onComplete: callback });
+
+      choiceObjects.forEach((choice, i) => {
+        if (choice.userData.type !== selectedChoice) {
+          tl.to(choice.scale, {
+            x: 0, y: 0, z: 0,
+            duration: 0.8,
+            ease: 'back.in(1.7)'
+          }, 0);
+        } else {
+          // Selected choice grows then disappears
+          tl.to(choice.scale, {
+            x: 1.5, y: 1.5, z: 1.5,
+            duration: 0.5,
+            ease: 'back.out(1.7)'
+          }, 0);
+          tl.to(choice.position, {
+            y: choice.position.y + 1,
+            duration: 1,
+            ease: 'power2.out'
+          }, 0.3);
+          tl.to(choice.scale, {
+            x: 0, y: 0, z: 0,
+            duration: 0.6,
+            ease: 'power2.in'
+          }, 1.2);
+        }
+      });
+
+      choicesGroup.visible = false;
+    }
+
+    // ============================================
+    // ENDING ANIMATIONS
+    // ============================================
+
+    function triggerEnding(type) {
+      if (type === 'stone') {
+        animateStoneEnding();
+      } else if (type === 'wood') {
+        animateWoodEnding();
+      } else if (type === 'straw') {
+        animateStrawEnding();
+      }
+    }
+
+    function animateStoneEnding() {
+      const tl = gsap.timeline({
+        onComplete: () => {
+          showRestartButton();
+        }
+      });
+
+      // Phase 1: Stone houses rise
+      tl.to(stoneHousesGroup.scale, {
+        x: 1, y: 1, z: 1,
+        duration: 2.5,
+        ease: 'back.out(1.2)'
+      });
+
+      // Phase 2: Sky darkens, blizzard intensifies
+      tl.to(sky.material.color, {
+        r: 0.2, g: 0.25, b: 0.35,
+        duration: 2
+      }, 1.5);
+
+      tl.to(scene.fog, {
+        near: 5,
+        far: 30,
+        duration: 2
+      }, 1.5);
+
+      tl.to(scene.fog.color, {
+        r: 0.3, g: 0.35, b: 0.45,
+        duration: 2
+      }, 1.5);
+
+      // Intensify snow
+      tl.to(snowParticles.userData, {
+        intensity: 2.0,
+        duration: 2
+      }, 1.5);
+
+      // Phase 3: Window lights glow warmly
+      stoneHousesGroup.children.forEach((house, i) => {
+        if (house.userData.windowLight) {
+          tl.to(house.userData.windowLight, {
+            intensity: 3.5,
+            duration: 1.5,
+            ease: 'power2.out'
+          }, 4 + i * 0.2);
+        }
+
+        if (house.userData.window && house.userData.window.material) {
+          tl.to(house.userData.window.material, {
+            emissiveIntensity: 2.5,
+            duration: 1.5,
+            ease: 'power2.out'
+          }, 4 + i * 0.2);
+        }
+      });
+
+      // Phase 4: Golden sunlight breaks through
+      tl.to(directionalLight, {
+        intensity: 1.5,
+        duration: 3,
+        ease: 'power2.inOut'
+      }, 6);
+
+      tl.to(directionalLight.color, {
+        r: 1.0, g: 0.9, b: 0.7,
+        duration: 3
+      }, 6);
+
+      tl.to(sky.material.color, {
+        r: 0.95, g: 0.8, b: 0.6,
+        duration: 3
+      }, 6);
+
+      tl.to(scene.fog, {
+        near: 10,
+        far: 50,
+        duration: 3
+      }, 6);
+
+      tl.to(scene.fog.color, {
+        r: 0.95, g: 0.85, b: 0.7,
+        duration: 3
+      }, 6);
+
+      // Camera movement
+      const currentY = camera.position.y;
+      tl.to(camera.position, {
+        y: currentY + 3,
+        duration: 9,
+        ease: 'power1.inOut'
+      }, 0);
+    }
+
+    function animateWoodEnding() {
+      const tl = gsap.timeline({
+        onComplete: () => {
+          showRestartButton();
+        }
+      });
+
+      // Phase 1: Wooden houses appear
+      tl.to(woodHousesGroup.scale, {
+        x: 1, y: 1, z: 1,
+        duration: 2.5,
+        ease: 'back.out(1.2)'
+      });
+
+      // Phase 2: Night falls
+      tl.to(sky.material.color, {
+        r: 0.05, g: 0.05, b: 0.1,
+        duration: 2.5
+      }, 2);
+
+      tl.to(ambientLight, {
+        intensity: 0.15,
+        duration: 2.5
+      }, 2);
+
+      tl.to(scene.fog.color, {
+        r: 0.1, g: 0.1, b: 0.15,
+        duration: 2.5
+      }, 2);
+
+      // Phase 3: Fire starts
+      const fireLight = woodHousesGroup.userData.fireLight;
+      if (fireLight) {
+        tl.to(fireLight, {
+          intensity: 1.5,
+          duration: 1,
+          ease: 'power2.in'
+        }, 4.5);
+
+        // Flickering effect
+        tl.to(fireLight, {
+          intensity: 2.5,
+          duration: 0.1,
+          repeat: 10,
+          yoyo: true
+        }, 5.5);
+
+        // Phase 4: Fire spreads
+        tl.to(fireLight, {
+          intensity: 6.0,
+          distance: 15,
+          duration: 2,
+          ease: 'power2.out'
+        }, 6.5);
+      }
+
+      // Phase 5: Houses turn black (burned)
+      woodHousesGroup.children.forEach((house, i) => {
+        if (house.userData.body && house.userData.body.material) {
+          tl.to(house.userData.body.material.color, {
+            r: 0.1, g: 0.08, b: 0.05,
+            duration: 2,
+            ease: 'power2.in'
+          }, 7 + i * 0.3);
+        }
+
+        if (house.userData.roof && house.userData.roof.material) {
+          tl.to(house.userData.roof.material.color, {
+            r: 0.05, g: 0.03, b: 0.02,
+            duration: 2,
+            ease: 'power2.in'
+          }, 7 + i * 0.3);
+        }
+      });
+
+      // Red smoke fills sky
+      tl.to(sky.material.color, {
+        r: 0.4, g: 0.1, b: 0.05,
+        duration: 2.5
+      }, 8);
+
+      tl.to(scene.fog.color, {
+        r: 0.5, g: 0.15, b: 0.1,
+        duration: 2.5
+      }, 8);
+
+      // Camera movement
+      const currentX = camera.position.x;
+      const currentY = camera.position.y;
+      tl.to(camera.position, {
+        y: currentY - 1,
+        x: currentX + 2,
+        duration: 10,
+        ease: 'power1.inOut'
+      }, 0);
+    }
+
+    function animateStrawEnding() {
+      const tl = gsap.timeline({
+        onComplete: () => {
+          showRestartButton();
+        }
+      });
+
+      // Phase 1: Straw huts appear
+      tl.to(strawHutsGroup.scale, {
+        x: 1, y: 1, z: 1,
+        duration: 2.5,
+        ease: 'back.out(1.2)'
+      });
+
+      // Phase 2: Wind and snow intensify
+      tl.to(sky.material.color, {
+        r: 0.6, g: 0.7, b: 0.85,
+        duration: 2
+      }, 2);
+
+      tl.to(scene.fog.color, {
+        r: 0.7, g: 0.75, b: 0.85,
+        duration: 2
+      }, 2);
+
+      tl.to(ambientLight.color, {
+        r: 0.7, g: 0.8, b: 1.0,
+        duration: 2
+      }, 2);
+
+      // Intensify snow
+      tl.to(snowParticles.userData, {
+        intensity: 3.0,
+        duration: 2
+      }, 2);
+
+      // Phase 3: Huts wobble in wind
+      strawHutsGroup.children.forEach((hut, i) => {
+        tl.to(hut.rotation, {
+          z: 0.15,
+          duration: 0.3,
+          yoyo: true,
+          repeat: 5,
+          ease: 'sine.inOut'
+        }, 4 + i * 0.1);
+      });
+
+      // Phase 4: Huts collapse
+      strawHutsGroup.children.forEach((hut, i) => {
+        tl.to(hut.scale, {
+          y: 0.2,
+          duration: 1.2,
+          ease: 'power3.in'
+        }, 6.5 + i * 0.3);
+
+        tl.to(hut.rotation, {
+          x: Math.PI / 4 + (Math.random() - 0.5) * 0.5,
+          z: Math.PI / 6 + (Math.random() - 0.5) * 0.3,
+          duration: 1.2,
+          ease: 'power3.in'
+        }, 6.5 + i * 0.3);
+
+        tl.to(hut.position, {
+          y: -0.5,
+          duration: 1.2,
+          ease: 'bounce.out'
+        }, 6.5 + i * 0.3);
+      });
+
+      // Phase 5: Heavy fog and blue-white lighting
+      tl.to(scene.fog, {
+        near: 3,
+        far: 25,
+        duration: 2.5
+      }, 8);
+
+      tl.to(scene.fog.color, {
+        r: 0.85, g: 0.9, b: 0.98,
+        duration: 2.5
+      }, 8);
+
+      tl.to(sky.material.color, {
+        r: 0.75, g: 0.8, b: 0.9,
+        duration: 2.5
+      }, 8);
+
+      // Camera tilts and pulls back
+      const currentX = camera.position.x;
+      const currentZ = camera.position.z;
+      const currentY = camera.position.y;
+      tl.to(camera.position, {
+        x: currentX - 3,
+        z: currentZ + 4,
+        y: currentY + 1,
+        duration: 10,
+        ease: 'power1.out'
+      }, 0);
+    }
+
+    // ============================================
+    // UTILITY FUNCTIONS
+    // ============================================
+
+    function startCameraOrbit() {
+      let time = 0;
+      cameraOrbitAnimation = gsap.to({}, {
+        duration: 0.016,
+        repeat: -1,
+        onRepeat: () => {
+          if (!isAnimating) {
+            time += 0.002;
+            const radius = 15;
+            camera.position.x = Math.sin(time) * radius;
+            camera.position.z = Math.cos(time) * radius;
+            camera.lookAt(0, 2, 0);
+          }
+        }
+      });
+    }
+
+    function showRestartButton() {
+      document.getElementById('restart-btn').style.display = 'flex';
+    }
+
+    function restartExperience() {
+      // Hide restart button
+      document.getElementById('restart-btn').style.display = 'none';
+
+      // Reset state
+      selectedChoice = null;
+      isAnimating = false;
+
+      // Reset houses
+      gsap.to(stoneHousesGroup.scale, { x: 0, y: 0, z: 0, duration: 0.5 });
+      gsap.to(woodHousesGroup.scale, { x: 0, y: 0, z: 0, duration: 0.5 });
+      gsap.to(strawHutsGroup.scale, { x: 0, y: 0, z: 0, duration: 0.5 });
+
+      // Reset environment
+      gsap.to(sky.material.color, {
+        r: 0xb8 / 255,
+        g: 0xd4 / 255,
+        b: 0xe8 / 255,
+        duration: 1
+      });
+
+      gsap.to(scene.fog, {
+        near: 10,
+        far: 50,
+        duration: 1
+      });
+
+      gsap.to(scene.fog.color, {
+        r: 0xb8 / 255,
+        g: 0xd4 / 255,
+        b: 0xe8 / 255,
+        duration: 1
+      });
+
+      gsap.to(ambientLight, {
+        intensity: 0.4,
+        duration: 1
+      });
+
+      gsap.to(ambientLight.color, {
+        r: 1, g: 1, b: 1,
+        duration: 1
+      });
+
+      gsap.to(directionalLight, {
+        intensity: 0.8,
+        duration: 1
+      });
+
+      gsap.to(directionalLight.color, {
+        r: 1, g: 1, b: 1,
+        duration: 1
+      });
+
+      // Reset snow
+      snowParticles.userData.intensity = 1.0;
+
+      // Reset camera
+      gsap.to(camera.position, {
+        x: 0,
+        y: 8,
+        z: 15,
+        duration: 1.5,
+        ease: 'power2.inOut',
+        onComplete: () => {
+          startCameraOrbit();
+        }
+      });
+
+      // Reset and show choices
+      setTimeout(() => {
+        choicesGroup.visible = true;
+        choiceObjects.forEach((choice, i) => {
+          choice.scale.set(0, 0, 0);
+          // Reset positions
+          const radius = 3.5;
+          const height = 3;
+          const angles = [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3];
+          choice.position.set(
+            Math.cos(angles[i]) * radius,
+            height,
+            Math.sin(angles[i]) * radius
+          );
+
+          gsap.to(choice.scale, {
+            x: 1, y: 1, z: 1,
+            duration: 1,
+            delay: 0.5 + i * 0.2,
+            ease: 'elastic.out(1, 0.5)'
+          });
+        });
+      }, 1000);
+
+      // Reset stone house windows
+      stoneHousesGroup.children.forEach(house => {
+        if (house.userData.windowLight) {
+          house.userData.windowLight.intensity = 0;
+        }
+        if (house.userData.window && house.userData.window.material) {
+          house.userData.window.material.emissiveIntensity = 0;
+        }
+      });
+
+      // Reset wood houses
+      woodHousesGroup.children.forEach(house => {
+        if (house.userData.body && house.userData.body.material) {
+          gsap.to(house.userData.body.material.color, {
+            r: 0x8b / 255,
+            g: 0x45 / 255,
+            b: 0x13 / 255,
+            duration: 1
+          });
+        }
+        if (house.userData.roof && house.userData.roof.material) {
+          gsap.to(house.userData.roof.material.color, {
+            r: 0x65 / 255,
+            g: 0x43 / 255,
+            b: 0x21 / 255,
+            duration: 1
+          });
+        }
+      });
+
+      // Reset fire light
+      if (woodHousesGroup.userData.fireLight) {
+        woodHousesGroup.userData.fireLight.intensity = 0;
+        woodHousesGroup.userData.fireLight.distance = 10;
+      }
+
+      // Reset straw huts
+      strawHutsGroup.children.forEach((hut, i) => {
+        const strawPositions = [
+          [-4, 0, -3],
+          [4, 0, -2],
+          [-3, 0, 3],
+          [3, 0, 4],
+          [0, 0, -5]
+        ];
+        gsap.to(hut.position, {
+          x: strawPositions[i][0],
+          y: strawPositions[i][1],
+          z: strawPositions[i][2],
+          duration: 1
+        });
+        gsap.to(hut.rotation, {
+          x: 0, y: 0, z: 0,
+          duration: 1
+        });
+        gsap.to(hut.scale, {
+          x: 1, y: 1, z: 1,
+          duration: 1
+        });
+      });
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // ============================================
+    // ANIMATION LOOP
+    // ============================================
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Update snow particles
+      if (snowParticles) {
+        const positions = snowParticles.geometry.attributes.position.array;
+        const velocities = snowParticles.userData.velocities;
+        const intensity = snowParticles.userData.intensity;
+
+        for (let i = 0; i < positions.length / 3; i++) {
+          const velocity = velocities[i];
+
+          positions[i * 3] += velocity.x * intensity;
+          positions[i * 3 + 1] += velocity.y * intensity;
+
+          // Reset particle when it falls below ground
+          if (positions[i * 3 + 1] < 0) {
+            positions[i * 3 + 1] = 30;
+            positions[i * 3] = (Math.random() - 0.5) * 50;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 50;
+          }
+        }
+
+        snowParticles.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // Animate choice icons (floating and pulsing)
+      choiceObjects.forEach((choice, i) => {
+        if (choicesGroup.visible && choice.userData.initialY !== undefined) {
+          choice.userData.time += 0.016;
+          const offset = Math.sin(choice.userData.time * 1.5) * 0.15;
+          choice.position.y = 3 + offset;
+
+          choice.rotation.y += 0.008;
+
+          // Pulse glow
+          if (choice.userData.light) {
+            choice.userData.light.intensity = 2 + Math.sin(choice.userData.time * 2) * 0.5;
+          }
+        }
+      });
+
+      renderer.render(scene, camera);
+    }
+
+    // ============================================
+    // START APPLICATION
+    // ============================================
+
+    // Wait for DOM to be ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>

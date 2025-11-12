@@ -2,6 +2,10 @@
 
 An immersive 3D interactive story built with React, Three.js, and GSAP. Experience a cinematic tale told purely through visuals, lighting, and animation.
 
+## 🎮 [Live Demo](https://sliu44artcenter.github.io/StoryInteract2.1/)
+
+**Click one of the three glowing icons to experience the story!**
+
 ## Story
 
 In a snowy winter city, a scholar who became a top official must decide how to build homes for his citizens. The viewer witnesses the consequences of their choice through a transforming 3D environment.
@@ -107,6 +111,31 @@ src/
 - Shadow maps at 2048x2048 resolution
 - Efficient geometry with appropriate polygon counts
 - No texture loading - all materials use colors and shaders
+
+## Deployment
+
+### GitHub Pages (Automatic)
+
+The project is configured to automatically deploy to GitHub Pages when you push to the `main` or `master` branch.
+
+**Setup Instructions:**
+
+1. Go to your repository settings on GitHub
+2. Navigate to **Pages** (under "Code and automation")
+3. Under "Build and deployment":
+   - Source: Select **GitHub Actions**
+4. Push to your main branch - the site will automatically build and deploy!
+
+The live site will be available at: `https://sliu44artcenter.github.io/StoryInteract2.1/`
+
+### Manual Deployment
+
+If you prefer to deploy manually:
+
+```bash
+npm run build          # Build the project
+# Then upload the 'dist' folder to your hosting service
+```
 
 ---
 

@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import gsap from 'gsap'
 import {
   Snow,
+  Smoke,
   Ground,
   Sky,
   Scholar,
@@ -46,9 +47,13 @@ function StoryScene() {
   const [choice, setChoice] = useState(null)
   const [showChoices, setShowChoices] = useState(true)
   const [isAnimating, setIsAnimating] = useState(false)
+  const [snowIntensity, setSnowIntensity] = useState(1.0)
+  const [smokeIntensity, setSmokeIntensity] = useState(0)
 
   const skyRef = useRef()
   const snowRef = useRef()
+  const snowIntensityRef = useRef({ value: 1.0 })
+  const smokeIntensityRef = useRef({ value: 0 })
   const stoneHousesRef = useRef()
   const woodHousesRef = useRef()
   const strawHutsRef = useRef()
@@ -120,7 +125,12 @@ function StoryScene() {
     }
 
     // Intensify snow
-    tl.to({}, { duration: 2 }, 1.5)
+    tl.to(snowIntensityRef.current, {
+      value: 2.5,
+      duration: 2,
+      ease: 'power2.in',
+      onUpdate: () => setSnowIntensity(snowIntensityRef.current.value)
+    }, 1.5)
 
     // Phase 3: Window lights glow warmly
     houses.children.forEach((house, i) => {
@@ -237,6 +247,14 @@ function StoryScene() {
         ease: 'power2.out'
       }, 6.5)
     }
+
+    // Phase 4.5: Smoke rises
+    tl.to(smokeIntensityRef.current, {
+      value: 1.0,
+      duration: 3,
+      ease: 'power2.in',
+      onUpdate: () => setSmokeIntensity(smokeIntensityRef.current.value)
+    }, 6.5)
 
     // Phase 5: Houses turn black (burned)
     houses.children.forEach((house, i) => {
@@ -407,7 +425,8 @@ function StoryScene() {
 
       {/* Environment */}
       <Sky ref={skyRef} />
-      <Snow ref={snowRef} intensity={1.0} />
+      <Snow ref={snowRef} intensity={snowIntensity} />
+      <Smoke intensity={smokeIntensity} position={[0, 2, 0]} />
       <Ground />
 
       {/* Scholar */}

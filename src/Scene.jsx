@@ -2,12 +2,102 @@ import { useRef, useMemo, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
+// Smoke Particle System for fire
+export function Smoke({ intensity = 0, position = [0, 2, 0] }) {
+  const pointsRef = useRef()
+  const velocitiesRef = useRef([])
+  const intensityRef = useRef({ value: intensity })
+
+  const particleCount = 500
+
+  useEffect(() => {
+    intensityRef.current.value = intensity
+  }, [intensity])
+
+  const { positions, particles } = useMemo(() => {
+    const positions = new Float32Array(particleCount * 3)
+    const velocities = []
+
+    for (let i = 0; i < particleCount; i++) {
+      const angle = Math.random() * Math.PI * 2
+      const radius = Math.random() * 8
+
+      positions[i * 3] = position[0] + Math.cos(angle) * radius
+      positions[i * 3 + 1] = position[1] + Math.random() * 3
+      positions[i * 3 + 2] = position[2] + Math.sin(angle) * radius
+
+      velocities.push({
+        y: Math.random() * 0.1 + 0.05,
+        x: (Math.random() - 0.5) * 0.05,
+        z: (Math.random() - 0.5) * 0.05
+      })
+    }
+
+    velocitiesRef.current = velocities
+    return { positions, particles: particleCount }
+  }, [position])
+
+  useFrame(() => {
+    if (!pointsRef.current) return
+
+    const positions = pointsRef.current.geometry.attributes.position.array
+    const currentIntensity = intensityRef.current.value
+
+    for (let i = 0; i < particleCount; i++) {
+      const velocity = velocitiesRef.current[i]
+
+      positions[i * 3] += velocity.x * currentIntensity
+      positions[i * 3 + 1] += velocity.y * currentIntensity
+      positions[i * 3 + 2] += velocity.z * currentIntensity
+
+      // Reset particle when it rises too high
+      if (positions[i * 3 + 1] > 15) {
+        const angle = Math.random() * Math.PI * 2
+        const radius = Math.random() * 8
+        positions[i * 3] = position[0] + Math.cos(angle) * radius
+        positions[i * 3 + 1] = position[1]
+        positions[i * 3 + 2] = position[2] + Math.sin(angle) * radius
+      }
+    }
+
+    pointsRef.current.geometry.attributes.position.needsUpdate = true
+  })
+
+  if (intensityRef.current.value === 0) return null
+
+  return (
+    <points ref={pointsRef}>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          count={particles}
+          array={positions}
+          itemSize={3}
+        />
+      </bufferGeometry>
+      <pointsMaterial
+        size={0.3}
+        color="#2a2a2a"
+        transparent
+        opacity={0.6}
+        sizeAttenuation
+      />
+    </points>
+  )
+}
+
 // Snow Particle System
 export function Snow({ intensity = 1.0 }) {
   const pointsRef = useRef()
   const velocitiesRef = useRef([])
+  const intensityRef = useRef({ value: intensity })
 
   const particleCount = 2000
+
+  // Update intensity ref when prop changes
+  useEffect(() => {
+    intensityRef.current.value = intensity
+  }, [intensity])
 
   const { positions, particles } = useMemo(() => {
     const positions = new Float32Array(particleCount * 3)
@@ -33,12 +123,13 @@ export function Snow({ intensity = 1.0 }) {
     if (!pointsRef.current) return
 
     const positions = pointsRef.current.geometry.attributes.position.array
+    const currentIntensity = intensityRef.current.value
 
     for (let i = 0; i < particleCount; i++) {
       const velocity = velocitiesRef.current[i]
 
-      positions[i * 3] += velocity.x * intensity
-      positions[i * 3 + 1] += velocity.y * intensity
+      positions[i * 3] += velocity.x * currentIntensity
+      positions[i * 3 + 1] += velocity.y * currentIntensity
 
       // Reset particle when it falls below ground
       if (positions[i * 3 + 1] < 0) {
